@@ -8,7 +8,6 @@ use std::str::{Bytes, CharIndices, Chars};
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub(crate) struct Cursor<'a> {
     pub rest: &'a str,
-    #[cfg(span_locations)]
     pub off: u32,
 }
 
@@ -17,7 +16,6 @@ impl<'a> Cursor<'a> {
         let (_front, rest) = self.rest.split_at(bytes);
         Cursor {
             rest,
-            #[cfg(span_locations)]
             off: self.off + _front.chars().count() as u32,
         }
     }
@@ -162,21 +160,17 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
             continue;
         }
 
-        #[cfg(span_locations)]
         let lo = input.off;
 
         let first = match input.bytes().next() {
             Some(first) => first,
             None => match stack.last() {
                 None => return Ok(TokenStream::from(trees)),
-                #[cfg(span_locations)]
                 Some((lo, _frame)) => {
                     return Err(LexError {
                         span: Span { lo: *lo, hi: *lo },
                     })
                 }
-                #[cfg(not(span_locations))]
-                Some(_frame) => return Err(LexError { span: Span {} }),
             },
         };
 
@@ -188,7 +182,6 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
         } {
             input = input.advance(1);
             let frame = (open_delimiter, trees);
-            #[cfg(span_locations)]
             let frame = (lo, frame);
             stack.push(frame);
             trees = Vec::new();
@@ -202,7 +195,6 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 Some(frame) => frame,
                 None => return Err(lex_error(input)),
             };
-            #[cfg(span_locations)]
             let (lo, frame) = frame;
             let (open_delimiter, outer) = frame;
             if open_delimiter != close_delimiter {
@@ -210,12 +202,7 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
             }
             input = input.advance(1);
             let mut g = Group::new(open_delimiter, TokenStream::from(trees));
-            g.set_span(Span {
-                #[cfg(span_locations)]
-                lo,
-                #[cfg(span_locations)]
-                hi: input.off,
-            });
+            g.set_span(Span { lo, hi: input.off });
             trees = outer;
             trees.push(TokenTree::Group(crate::Group::_new_stable(g)));
         } else {
@@ -223,12 +210,7 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 Ok((rest, tt)) => (rest, tt),
                 Err(Reject) => return Err(lex_error(input)),
             };
-            tt.set_span(crate::Span::_new_stable(Span {
-                #[cfg(span_locations)]
-                lo,
-                #[cfg(span_locations)]
-                hi: rest.off,
-            }));
+            tt.set_span(crate::Span::_new_stable(Span { lo, hi: rest.off }));
             trees.push(tt);
             input = rest;
         }
@@ -236,13 +218,9 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
 }
 
 fn lex_error(cursor: Cursor) -> LexError {
-    #[cfg(not(span_locations))]
-    let _ = cursor;
     LexError {
         span: Span {
-            #[cfg(span_locations)]
             lo: cursor.off,
-            #[cfg(span_locations)]
             hi: cursor.off,
         },
     }
@@ -370,14 +348,13 @@ fn cooked_string(input: Cursor) -> Result<Cursor, Reject> {
                         break;
                     }
                 }
-                Some((_, 'n')) | Some((_, 'r')) | Some((_, 't')) | Some((_, '\\'))
-                | Some((_, '\'')) | Some((_, '"')) | Some((_, '0')) => {}
+                Some((_, 'n' | 'r' | 't' | '\\' | '\'' | '"' | '0')) => {}
                 Some((_, 'u')) => {
                     if !backslash_u(&mut chars) {
                         break;
                     }
                 }
-                Some((_, ch @ '\n')) | Some((_, ch @ '\r')) => {
+                Some((_, ch @ ('\n' | '\r'))) => {
                     let mut last = ch;
                     loop {
                         if last == '\r' && chars.next().map_or(true, |(_, ch)| ch != '\n') {
@@ -428,9 +405,8 @@ fn cooked_byte_string(mut input: Cursor) -> Result<Cursor, Reject> {
                         break;
                     }
                 }
-                Some((_, b'n')) | Some((_, b'r')) | Some((_, b't')) | Some((_, b'\\'))
-                | Some((_, b'0')) | Some((_, b'\'')) | Some((_, b'"')) => {}
-                Some((newline, b @ b'\n')) | Some((newline, b @ b'\r')) => {
+                Some((_, b'n' | b'r' | b't' | b'\\' | b'0' | b'\'' | b'"')) => {}
+                Some((newline, b @ (b'\n' | b'\r'))) => {
                     let mut last = b as char;
                     let rest = input.advance(newline + 1);
                     let mut chars = rest.char_indices();
@@ -493,8 +469,7 @@ fn byte(input: Cursor) -> Result<Cursor, Reject> {
     let ok = match bytes.next().map(|(_, b)| b) {
         Some(b'\\') => match bytes.next().map(|(_, b)| b) {
             Some(b'x') => backslash_x_byte(&mut bytes),
-            Some(b'n') | Some(b'r') | Some(b't') | Some(b'\\') | Some(b'0') | Some(b'\'')
-            | Some(b'"') => true,
+            Some(b'n' | b'r' | b't' | b'\\' | b'0' | b'\'' | b'"') => true,
             _ => false,
         },
         b => b.is_some(),
@@ -517,7 +492,7 @@ fn character(input: Cursor) -> Result<Cursor, Reject> {
         Some('\\') => match chars.next().map(|(_, ch)| ch) {
             Some('x') => backslash_x_char(&mut chars),
             Some('u') => backslash_u(&mut chars),
-            Some('n') | Some('r') | Some('t') | Some('\\') | Some('0') | Some('\'') | Some('"') => {
+            Some('n' | 'r' | 't' | '\\' | '0' | '\'' | '"') => {
                 true
             }
             _ => false,
@@ -601,7 +576,7 @@ fn float(input: Cursor) -> Result<Cursor, Reject> {
 fn float_digits(input: Cursor) -> Result<Cursor, Reject> {
     let mut chars = input.chars().peekable();
     match chars.next() {
-        Some(ch) if ch >= '0' && ch <= '9' => {}
+        Some(ch) if ('0'..='9').contains(&ch) => {}
         _ => return Err(Reject),
     }
 
@@ -787,15 +762,9 @@ fn punct_char(input: Cursor) -> PResult<char> {
 }
 
 fn doc_comment(input: Cursor) -> PResult<Vec<TokenTree>> {
-    #[cfg(span_locations)]
     let lo = input.off;
     let (rest, (comment, inner)) = doc_comment_contents(input)?;
-    let span = crate::Span::_new_stable(Span {
-        #[cfg(span_locations)]
-        lo,
-        #[cfg(span_locations)]
-        hi: rest.off,
-    });
+    let span = crate::Span::_new_stable(Span { lo, hi: rest.off });
 
     let mut scan_for_bare_cr = comment;
     while let Some(cr) = scan_for_bare_cr.find('\r') {

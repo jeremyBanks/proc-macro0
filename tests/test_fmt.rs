@@ -1,6 +1,6 @@
 #![allow(clippy::from_iter_instead_of_collect)]
 
-use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
+use proc_macro0::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use std::iter::{self, FromIterator};
 
 #[test]

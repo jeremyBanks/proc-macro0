@@ -1,6 +1,6 @@
 #![allow(clippy::non_ascii_literal)]
 
-use proc_macro2::{Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro0::{Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::panic;
 use std::str::{self, FromStr};
 
@@ -301,7 +301,6 @@ fn fail() {
     fail("\"\\\n\u{85}\r\"");
 }
 
-#[cfg(span_locations)]
 #[test]
 fn span_test() {
     check_spans(
@@ -326,8 +325,6 @@ testing 123
     );
 }
 
-#[cfg(procmacro2_semver_exempt)]
-#[cfg(not(nightly))]
 #[test]
 fn default_span() {
     let start = Span::call_site().start();
@@ -341,7 +338,6 @@ fn default_span() {
     assert!(!source_file.is_real());
 }
 
-#[cfg(procmacro2_semver_exempt)]
 #[test]
 fn span_join() {
     let source1 = "aaa\nbbb"
@@ -427,10 +423,6 @@ fn raw_identifier() {
 fn test_debug_ident() {
     let ident = Ident::new("proc_macro", Span::call_site());
 
-    #[cfg(not(span_locations))]
-    let expected = "Ident(proc_macro)";
-
-    #[cfg(span_locations)]
     let expected = "Ident { sym: proc_macro }";
 
     assert_eq!(expected, format!("{:?}", ident));
@@ -440,7 +432,6 @@ fn test_debug_ident() {
 fn test_debug_tokenstream() {
     let tts = TokenStream::from_str("[a + 1]").unwrap();
 
-    #[cfg(not(span_locations))]
     let expected = "\
 TokenStream [
     Group {
@@ -448,66 +439,23 @@ TokenStream [
         stream: TokenStream [
             Ident {
                 sym: a,
+                span: 2 bytes,
             },
             Punct {
                 char: '+',
                 spacing: Alone,
+                span: 2 bytes,
             },
             Literal {
                 lit: 1,
+                span: 2 bytes,
             },
         ],
+        span: 8 bytes,
     },
 ]\
     ";
 
-    #[cfg(not(span_locations))]
-    let expected_before_trailing_commas = "\
-TokenStream [
-    Group {
-        delimiter: Bracket,
-        stream: TokenStream [
-            Ident {
-                sym: a
-            },
-            Punct {
-                char: '+',
-                spacing: Alone
-            },
-            Literal {
-                lit: 1
-            }
-        ]
-    }
-]\
-    ";
-
-    #[cfg(span_locations)]
-    let expected = "\
-TokenStream [
-    Group {
-        delimiter: Bracket,
-        stream: TokenStream [
-            Ident {
-                sym: a,
-                span: bytes(2..3),
-            },
-            Punct {
-                char: '+',
-                spacing: Alone,
-                span: bytes(4..5),
-            },
-            Literal {
-                lit: 1,
-                span: bytes(6..7),
-            },
-        ],
-        span: bytes(1..8),
-    },
-]\
-    ";
-
-    #[cfg(span_locations)]
     let expected_before_trailing_commas = "\
 TokenStream [
     Group {
@@ -515,19 +463,19 @@ TokenStream [
         stream: TokenStream [
             Ident {
                 sym: a,
-                span: bytes(2..3)
+                span: 2 bytes
             },
             Punct {
                 char: '+',
                 spacing: Alone,
-                span: bytes(4..5)
+                span: 3 bytes
             },
             Literal {
                 lit: 1,
-                span: bytes(6..7)
+                span: 3 bytes
             }
         ],
-        span: bytes(1..8)
+        span: 8 bytes
     }
 ]\
     ";
@@ -557,7 +505,6 @@ fn tuple_indexing() {
     assert!(tokens.next().is_none());
 }
 
-#[cfg(span_locations)]
 #[test]
 fn non_ascii_tokens() {
     check_spans("// abc", &[]);
@@ -596,14 +543,18 @@ fn non_ascii_tokens() {
     check_spans("b\"a\\\n\u{00a0}c\"", &[(1, 0, 2, 3)]);
 }
 
-#[cfg(span_locations)]
+#[test]
+fn test_send() {
+    fn requires_send<T: Send>() {}
+    requires_send::<Span>();
+}
+
 fn check_spans(p: &str, mut lines: &[(usize, usize, usize, usize)]) {
     let ts = p.parse::<TokenStream>().unwrap();
     check_spans_internal(ts, &mut lines);
     assert!(lines.is_empty(), "leftover ranges: {:?}", lines);
 }
 
-#[cfg(span_locations)]
 fn check_spans_internal(ts: TokenStream, lines: &mut &[(usize, usize, usize, usize)]) {
     for i in ts {
         if let Some((&(sline, scol, eline, ecol), rest)) = lines.split_first() {
