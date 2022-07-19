@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "proc-macro0"
-version = "1.0.40-dev.0"
+version = "1.0.40-dev.1"
 dependencies = [
  "once_cell",
  "parking_lot",

@@ -14,7 +14,7 @@ use std::vec;
 
 #[derive(Clone)]
 pub(crate) struct TokenStream {
-    inner: Vec<TokenTree>,
+    pub(crate) inner: Vec<TokenTree>,
 }
 
 #[derive(Debug)]

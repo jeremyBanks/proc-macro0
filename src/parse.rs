@@ -492,9 +492,7 @@ fn character(input: Cursor) -> Result<Cursor, Reject> {
         Some('\\') => match chars.next().map(|(_, ch)| ch) {
             Some('x') => backslash_x_char(&mut chars),
             Some('u') => backslash_u(&mut chars),
-            Some('n' | 'r' | 't' | '\\' | '0' | '\'' | '"') => {
-                true
-            }
+            Some('n' | 'r' | 't' | '\\' | '0' | '\'' | '"') => true,
             _ => false,
         },
         ch => ch.is_some(),

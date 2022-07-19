@@ -15,8 +15,10 @@
     clippy::vec_init_then_push
 )]
 #![warn(unsafe_code)]
+#![feature(doc_auto_cfg, doc_cfg)]
 
 mod fallback;
+mod incompatible;
 mod parse;
 
 use crate::fallback as imp;
@@ -1010,6 +1012,7 @@ impl Display for Literal {
 }
 
 /// Public implementation details for the `TokenStream` type, such as iterators.
+#[doc(hidden)]
 pub mod token_stream {
     use crate::{imp, TokenTree};
     use std::fmt::{self, Debug};

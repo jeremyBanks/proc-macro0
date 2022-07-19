@@ -1,11 +1,15 @@
 [package]
 name = "proc-macro0"
-version = "1.0.40-dev.0"
+version = "1.0.40-dev.1"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 description = """
 A fork of proc-macro2 that trades in actual procedural macro support for the ability to be used from multiple threads.
 """
+
+[features]
+default = ["incompatible"]
+incompatible = []
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
