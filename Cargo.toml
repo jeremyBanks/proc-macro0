@@ -7,10 +7,6 @@ description = """
 A fork of proc-macro2 that trades in actual procedural macro support for the ability to be used from multiple threads.
 """
 
-[features]
-default = ["incompatible"]
-incompatible = []
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 

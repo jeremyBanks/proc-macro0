@@ -18,7 +18,7 @@
 #![feature(doc_auto_cfg, doc_cfg)]
 
 mod fallback;
-mod incompatible;
+mod impls;
 mod parse;
 
 use crate::fallback as imp;
@@ -30,6 +30,7 @@ use std::iter::FromIterator;
 use std::ops::RangeBounds;
 use std::str::FromStr;
 use std::{cmp::Ordering, path::PathBuf};
+use std::sync::Weak as WeakArc;
 
 /// An abstract stream of tokens, or more concretely a sequence of token trees.
 ///
@@ -344,6 +345,15 @@ pub enum TokenTree {
 }
 
 impl TokenTree {
+    pub fn parent(&self) -> &WeakArc<Self> {
+        match self {
+            TokenTree::Group(ref group) => &group.parent,
+            TokenTree::Ident(ref ident) => &ident.parent,
+            TokenTree::Punct(ref punct) => &punct.parent,
+            TokenTree::Literal(ref literal) => &literal.parent,
+        }
+    }
+
     /// Returns the span of this tree, delegating to the `span` method of
     /// the contained token or a delimited stream.
     pub fn span(&self) -> Span {
@@ -435,6 +445,7 @@ impl Debug for TokenTree {
 #[derive(Clone)]
 pub struct Group {
     inner: imp::Group,
+    pub(crate) parent: WeakArc<Group>,
 }
 
 /// Describes how a sequence of token trees is delimited.
