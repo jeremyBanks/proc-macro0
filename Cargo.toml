@@ -8,4 +8,3 @@ description = "token-tree"
 [dependencies]
 once_cell = "1.13.0"
 proc-macro2 = { version = "1.0.40", features = ["span-locations"] }
-serde = { version = "1.0.139", features = ["derive", "rc"] }

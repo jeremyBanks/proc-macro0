@@ -3,7 +3,6 @@
 use {
     once_cell::sync::OnceCell,
     proc_macro2::{TokenStream, TokenTree},
-    serde::{Deserialize, Serialize},
     std::{
         collections::BTreeMap,
         error::Error,
