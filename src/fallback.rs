@@ -77,6 +77,20 @@ impl From<Vec<TokenTree>> for TokenStream {
     }
 }
 
+// Nonrecursive to prevent stack overflow.
+impl Drop for TokenStream {
+    fn drop(&mut self) {
+        while let Some(token) = self.inner.pop() {
+            let group = match token {
+                TokenTree::Group(group) => group.inner,
+                _ => continue,
+            };
+            let mut group = group;
+            self.inner.extend(group.stream.take_inner());
+        }
+    }
+}
+
 fn get_cursor(src: &str) -> Cursor {
     // Create a dummy file & add it to the source map
     let mut cm = SOURCE_MAP.write();
@@ -430,8 +444,8 @@ impl Group {
         self.delimiter
     }
 
-    pub fn stream(&self) -> &TokenStream {
-        &self.stream
+    pub fn stream(&self) -> TokenStream {
+        self.stream.clone()
     }
 
     pub fn span(&self) -> Span {

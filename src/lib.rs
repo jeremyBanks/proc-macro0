@@ -60,12 +60,15 @@ impl TokenStream {
 
     /// Returns an empty `TokenStream` containing no token trees.
     pub fn new() -> Self {
-        TokenStream::_new(imp::TokenStream::new())
+        TokenStream::_new(TokenStream { inner: Vec::new() })
     }
 
     /// Checks if this `TokenStream` is empty.
     pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+        {
+            let ref this = self.inner;
+            this.inner.len() == 0
+        }
     }
 }
 
