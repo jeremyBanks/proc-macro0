@@ -1,14 +1,11 @@
 [package]
-name = "proc-macro0"
-version = "1.0.40-dev.20220719"
+name = "token-tree"
+version = "0.20220719.0-dev"
 license = "MIT OR Apache-2.0"
-edition = "2018"
-description = "fork of proc-macro2 without the proc-macro or the 2"
-
-[package.metadata.docs.rs]
-targets = ["x86_64-unknown-linux-gnu"]
+edition = "2021"
+description = "token-tree"
 
 [dependencies]
 once_cell = "1.13.0"
-parking_lot = "0.12.1"
-unicode-ident = "1.0"
+proc-macro2 = { version = "1.0.40", features = ["span-locations"] }
+serde = { version = "1.0.139", features = ["derive", "rc"] }
