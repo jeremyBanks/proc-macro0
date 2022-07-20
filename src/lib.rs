@@ -23,14 +23,14 @@ mod parse;
 
 use crate::fallback as imp;
 
-use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::ops::RangeBounds;
 use std::str::FromStr;
-use std::{cmp::Ordering, path::PathBuf};
 use std::sync::Weak as WeakArc;
+use std::{cmp::Ordering, path::PathBuf};
+use std::{error::Error, sync::Arc};
 
 /// An abstract stream of tokens, or more concretely a sequence of token trees.
 ///
@@ -335,7 +335,7 @@ impl Debug for Span {
 #[derive(Clone)]
 pub enum TokenTree {
     /// A token stream surrounded by bracket delimiters.
-    Group(Group),
+    Group(Arc<Group>),
     /// An identifier.
     Ident(Ident),
     /// A single punctuation character (`+`, `,`, `$`, etc.).
@@ -345,12 +345,34 @@ pub enum TokenTree {
 }
 
 impl TokenTree {
-    pub fn parent(&self) -> &WeakArc<Self> {
+    pub fn parent(&self) -> Option<Arc<Group>> {
         match self {
-            TokenTree::Group(ref group) => &group.parent,
-            TokenTree::Ident(ref ident) => &ident.parent,
-            TokenTree::Punct(ref punct) => &punct.parent,
-            TokenTree::Literal(ref literal) => &literal.parent,
+            TokenTree::Group(ref group) => group.parent(),
+            TokenTree::Ident(ref ident) => ident.parent(),
+            TokenTree::Punct(ref punct) => punct.parent(),
+            TokenTree::Literal(ref literal) => literal.parent(),
+        }
+    }
+
+    pub fn children(&self) -> Vec<&TokenTree> {
+        match self {
+            TokenTree::Group(ref group) => {
+                let group = group;
+                let r = group.as_ref();
+                todo!()
+            }
+            TokenTree::Ident(ref _ident) => vec![],
+            TokenTree::Punct(ref _punct) => vec![],
+            TokenTree::Literal(ref _literal) => vec![],
+        }
+    }
+
+    pub(crate) fn set_parent(&mut self, parent: WeakArc<Group>) {
+        match self {
+            TokenTree::Group(ref mut group) => Arc::get_mut(group).unwrap().parent = parent,
+            TokenTree::Ident(ref mut ident) => ident.parent = parent,
+            TokenTree::Punct(ref mut punct) => punct.parent = parent,
+            TokenTree::Literal(ref mut literal) => literal.parent = parent,
         }
     }
 
@@ -372,7 +394,7 @@ impl TokenTree {
     /// the `set_span` method of each variant.
     pub fn set_span(&mut self, span: Span) {
         match self {
-            TokenTree::Group(t) => t.set_span(span),
+            TokenTree::Group(ref mut group) => Arc::get_mut(group).unwrap().set_span(span),
             TokenTree::Ident(t) => t.set_span(span),
             TokenTree::Punct(t) => t.set_span(span),
             TokenTree::Literal(t) => t.set_span(span),
@@ -382,6 +404,12 @@ impl TokenTree {
 
 impl From<Group> for TokenTree {
     fn from(g: Group) -> TokenTree {
+        TokenTree::from(Arc::new(g))
+    }
+}
+
+impl From<Arc<Group>> for TokenTree {
+    fn from(g: Arc<Group>) -> TokenTree {
         TokenTree::Group(g)
     }
 }
@@ -468,12 +496,21 @@ pub enum Delimiter {
 }
 
 impl Group {
-    fn _new(inner: imp::Group) -> Self {
-        Group { inner }
+    fn _new(inner: imp::Group) -> Arc<Self> {
+        Arc::new_cyclic(|self_| {
+            for tt in inner.stream().as_mut().iter_mut() {
+                tt.set_parent(self_.clone());
+            }
+
+            Group {
+                inner,
+                parent: WeakArc::new(),
+            }
+        })
     }
 
-    fn _new_stable(inner: fallback::Group) -> Self {
-        Group { inner }
+    fn _new_stable(inner: fallback::Group) -> Arc<Self> {
+        Self::_new(inner)
     }
 
     /// Creates a new `Group` with the given delimiter and token stream.
@@ -484,7 +521,12 @@ impl Group {
     pub fn new(delimiter: Delimiter, stream: TokenStream) -> Self {
         Group {
             inner: imp::Group::new(delimiter, stream.inner),
+            parent: WeakArc::new(),
         }
+    }
+
+    pub fn parent(&self) -> Option<Arc<Group>> {
+        self.parent.upgrade()
     }
 
     /// Returns the delimiter of this `Group`
@@ -566,6 +608,7 @@ pub struct Punct {
     ch: char,
     spacing: Spacing,
     span: Span,
+    pub(crate) parent: WeakArc<Group>,
 }
 
 /// Whether a `Punct` is followed immediately by another `Punct` or followed by
@@ -594,7 +637,12 @@ impl Punct {
             ch,
             spacing,
             span: Span::call_site(),
+            parent: WeakArc::new(),
         }
+    }
+
+    pub fn parent(&self) -> Option<Arc<Group>> {
+        self.parent.upgrade()
     }
 
     /// Returns the value of this punctuation character as `char`.
@@ -689,11 +737,19 @@ impl Debug for Punct {
 #[derive(Clone)]
 pub struct Ident {
     inner: imp::Ident,
+    pub(crate) parent: WeakArc<Group>,
 }
 
 impl Ident {
     fn _new(inner: imp::Ident) -> Self {
-        Ident { inner }
+        Ident {
+            inner,
+            parent: WeakArc::new(),
+        }
+    }
+
+    pub fn parent(&self) -> Option<Arc<Group>> {
+        self.parent.upgrade()
     }
 
     /// Creates a new `Ident` with the given `string` as well as the specified
@@ -814,6 +870,7 @@ impl Debug for Ident {
 #[derive(Clone)]
 pub struct Literal {
     inner: imp::Literal,
+    pub(crate) parent: WeakArc<Group>,
 }
 
 macro_rules! suffixed_int_literals {
@@ -858,11 +915,21 @@ macro_rules! unsuffixed_int_literals {
 
 impl Literal {
     fn _new(inner: imp::Literal) -> Self {
-        Literal { inner }
+        Literal {
+            inner,
+            parent: WeakArc::new(),
+        }
     }
 
     fn _new_stable(inner: fallback::Literal) -> Self {
-        Literal { inner }
+        Literal {
+            inner,
+            parent: WeakArc::new(),
+        }
+    }
+
+    pub fn parent(&self) -> Option<Arc<Group>> {
+        self.parent.upgrade()
     }
 
     suffixed_int_literals! {

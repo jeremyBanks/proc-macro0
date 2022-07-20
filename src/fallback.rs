@@ -1,8 +1,8 @@
-use crate::{parse::{self, Cursor}, TokenTree};
-use crate::{Delimiter, Spacing};
+use crate::parse::{self, Cursor};
+use crate::{Delimiter, Spacing, TokenTree};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
-use std::{cmp, sync::{Arc, Weak as WeakArc}};
+use std::cmp;
 use std::fmt::{self, Debug, Display, Write};
 use std::iter::FromIterator;
 
@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::vec;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct TokenStream {
-    inner: Vec<Arc<TokenTree>>,
+    pub(crate) inner: Vec<TokenTree>,
 }
 
 #[derive(Debug)]
@@ -36,25 +36,14 @@ impl LexError {
 
 impl TokenStream {
     pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn from_named_str(name: &str, src: &str) -> Result<Self, LexError> {
-        parse::token_stream({
-            let mut cm = SOURCE_MAP.write();
-            let span = cm.add_file(&name, src);
-            Cursor {
-                rest: src,
-                off: span.lo,
-            }
-        })
+        TokenStream { inner: Vec::new() }
     }
 
     pub fn is_empty(&self) -> bool {
         self.inner.len() == 0
     }
 
-    fn take_inner(&mut self) -> Vec<Arc<TokenTree>> {
+    fn take_inner(&mut self) -> Vec<TokenTree> {
         std::mem::take(&mut self.inner)
     }
 
@@ -85,20 +74,6 @@ impl TokenStream {
 impl From<Vec<TokenTree>> for TokenStream {
     fn from(inner: Vec<TokenTree>) -> Self {
         TokenStream { inner }
-    }
-}
-
-// Nonrecursive to prevent stack overflow.
-impl Drop for TokenStream {
-    fn drop(&mut self) {
-        while let Some(token) = self.inner.pop() {
-            let group = match token {
-                TokenTree::Group(group) => group.inner,
-                _ => continue,
-            };
-            let mut group = group;
-            self.inner.extend(group.stream.take_inner());
-        }
     }
 }
 
@@ -455,8 +430,8 @@ impl Group {
         self.delimiter
     }
 
-    pub fn stream(&self) -> TokenStream {
-        self.stream.clone()
+    pub fn stream(&self) -> &TokenStream {
+        &self.stream
     }
 
     pub fn span(&self) -> Span {
