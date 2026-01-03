@@ -40,14 +40,18 @@ rustversion = "1"
 tar = "0.4"
 
 [features]
+# Enables wrapping the real compiler proc_macro types. Use this when writing
+# procedural macros. Mutually exclusive with `sync`.
 proc-macro = []
-default = ["proc-macro"]
 
 # Thread-safe (Send + Sync) token streams for use outside of procedural macros.
 # When enabled, always uses the fallback implementation with Arc/RwLock instead
-# of Rc/RefCell, making all types Send + Sync. Cannot be used for actual
-# procedural macro development, but enables multi-threaded code analysis tools.
+# of Rc/RefCell, making all types Send + Sync. Mutually exclusive with `proc-macro`.
 sync = ["once_cell", "parking_lot"]
+
+# Default is neither - basic fallback, not thread-safe, not proc-macro compatible.
+# Users must explicitly choose `proc-macro` OR `sync` based on their use case.
+default = []
 
 # Expose methods Span::start and Span::end which give the line/column location
 # of a token.

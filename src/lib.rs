@@ -1,13 +1,21 @@
-//! [![github]](https://github.com/dtolnay/proc-macro2)&ensp;[![crates-io]](https://crates.io/crates/proc-macro2)&ensp;[![docs-rs]](crate)
+//! A fork of [proc-macro2](https://github.com/dtolnay/proc-macro2) with mutually
+//! exclusive feature flags for different use cases.
 //!
-//! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
-//! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
-//! [docs-rs]: https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs
+//! # Features
 //!
-//! <br>
+//! Choose one of the following features based on your use case:
 //!
-//! A wrapper around the procedural macro API of the compiler's [`proc_macro`]
-//! crate. This library serves two purposes:
+//! - **`proc-macro`** — For writing procedural macros. Wraps the compiler's
+//!   `proc_macro` types when available. Types are `!Send + !Sync`.
+//!
+//! - **`sync`** — For multi-threaded tools. Uses `Arc`/`RwLock` internally.
+//!   All types are `Send + Sync`. Cannot wrap real `proc_macro` types.
+//!
+//! By default, neither feature is enabled. Enabling both is a compile error.
+//!
+//! # Purpose
+//!
+//! This library serves two purposes:
 //!
 //! - **Bring proc-macro-like functionality to other contexts like build.rs and
 //!   main.rs.** Types from `proc_macro` are entirely specific to procedural
@@ -79,9 +87,13 @@
 //!
 //! # Thread-Safety
 //!
-//! Most types in this crate are `!Sync` because the underlying compiler
-//! types make use of thread-local memory, meaning they cannot be accessed from
-//! a different thread.
+//! By default (and with the `proc-macro` feature), most types are `!Send` and
+//! `!Sync` because the underlying compiler types use thread-local memory.
+//!
+//! With the `sync` feature enabled, all types become `Send + Sync` by using
+//! `Arc` instead of `Rc` and `RwLock` instead of thread-local storage. This
+//! enables multi-threaded code analysis but prevents wrapping real `proc_macro`
+//! types.
 
 // Proc-macro2 types in rustdoc of other crates get linked to here.
 #![doc(html_root_url = "https://docs.rs/proc-macro2/1.0.104")]
@@ -117,6 +129,15 @@
     clippy::vec_init_then_push
 )]
 #![allow(unknown_lints, mismatched_lifetime_syntaxes)]
+
+// The `proc-macro` and `sync` features are mutually exclusive.
+#[cfg(all(feature = "proc-macro", feature = "sync"))]
+compile_error!(
+    "The `proc-macro` and `sync` features are mutually exclusive. \
+     Use `proc-macro` for procedural macro development, or `sync` for \
+     thread-safe usage in tools. They cannot be combined because the \
+     compiler's proc_macro types are not thread-safe."
+);
 
 #[cfg(all(procmacro2_semver_exempt, wrap_proc_macro, not(super_unstable)))]
 compile_error! {"\

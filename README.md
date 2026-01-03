@@ -1,47 +1,69 @@
-# proc-macro2
+# proc-macro0
 
-[<img alt="github" src="https://img.shields.io/badge/github-dtolnay/proc--macro2-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/proc-macro2)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/proc-macro2.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/proc-macro2)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-proc--macro2-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/proc-macro2)
-[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/proc-macro2/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/proc-macro2/actions?query=branch%3Amaster)
+A fork of [proc-macro2](https://github.com/dtolnay/proc-macro2) with mutually
+exclusive feature flags for different use cases:
 
-A wrapper around the procedural macro API of the compiler's `proc_macro` crate.
-This library serves two purposes:
+- **`proc-macro`** — For writing procedural macros. Wraps the compiler's
+  `proc_macro` types when available.
+- **`sync`** — For multi-threaded tools. All types are `Send + Sync`.
 
-- **Bring proc-macro-like functionality to other contexts like build.rs and
-  main.rs.** Types from `proc_macro` are entirely specific to procedural macros
-  and cannot ever exist in code outside of a procedural macro. Meanwhile
-  `proc_macro2` types may exist anywhere including non-macro code. By developing
-  foundational libraries like [syn] and [quote] against `proc_macro2` rather
-  than `proc_macro`, the procedural macro ecosystem becomes easily applicable to
-  many other use cases and we avoid reimplementing non-macro equivalents of
-  those libraries.
+By default, neither feature is enabled, providing a basic fallback
+implementation that is neither proc-macro compatible nor thread-safe.
 
-- **Make procedural macros unit testable.** As a consequence of being specific
-  to procedural macros, nothing that uses `proc_macro` can be executed from a
-  unit test. In order for helper libraries or components of a macro to be
-  testable in isolation, they must be implemented using `proc_macro2`.
+## Features
 
-[syn]: https://github.com/dtolnay/syn
-[quote]: https://github.com/dtolnay/quote
-
-## Usage
+### `proc-macro` (for procedural macros)
 
 ```toml
 [dependencies]
-proc-macro2 = "1.0"
+proc-macro0 = { version = "1.0", features = ["proc-macro"] }
 ```
 
-The skeleton of a typical procedural macro typically looks like this:
+When enabled, proc-macro0 behaves identically to proc-macro2:
+- Wraps real `proc_macro::TokenStream` when running inside a procedural macro
+- Falls back to a pure-Rust implementation otherwise
+- Types are `!Send + !Sync` (matching the compiler's types)
+
+Use this when writing procedural macros with syn/quote.
+
+### `sync` (for multi-threaded tools)
+
+```toml
+[dependencies]
+proc-macro0 = { version = "1.0", features = ["sync"] }
+```
+
+When enabled:
+- Always uses the fallback implementation (never wraps real `proc_macro`)
+- Uses `Arc` instead of `Rc` for reference counting
+- Uses `RwLock` instead of `RefCell` for the source map
+- All types are `Send + Sync`
+
+Use this for code analysis tools, formatters, or other multi-threaded
+applications that need to parse Rust code from multiple threads.
+
+### Why mutually exclusive?
+
+The compiler's `proc_macro` types are `!Send + !Sync` because they use
+thread-local storage. If proc-macro0 wraps these types, it cannot be
+thread-safe. Enabling both features results in a compile error:
+
+```
+error: The `proc-macro` and `sync` features are mutually exclusive.
+```
+
+## Usage
+
+For procedural macros (same as proc-macro2):
 
 ```rust
 extern crate proc_macro;
 
 #[proc_macro_derive(MyDerive)]
 pub fn my_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = proc_macro2::TokenStream::from(input);
+    let input = proc_macro0::TokenStream::from(input);
 
-    let output: proc_macro2::TokenStream = {
+    let output: proc_macro0::TokenStream = {
         /* transform input */
     };
 
@@ -49,32 +71,44 @@ pub fn my_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 ```
 
-If parsing with [Syn], you'll use [`parse_macro_input!`] instead to propagate
-parse errors correctly back to the compiler when parsing fails.
+For multi-threaded parsing:
 
-[`parse_macro_input!`]: https://docs.rs/syn/2.0/syn/macro.parse_macro_input.html
+```rust
+use proc_macro0::TokenStream;
+use std::thread;
+
+fn main() {
+    let handles: Vec<_> = sources.into_iter().map(|src| {
+        thread::spawn(move || {
+            src.parse::<TokenStream>().unwrap()
+        })
+    }).collect();
+
+    let results: Vec<_> = handles.into_iter()
+        .map(|h| h.join().unwrap())
+        .collect();
+}
+```
+
+## Other Features
+
+### `span-locations`
+
+Expose methods `Span::start` and `Span::end` which give the line/column
+location of a token.
+
+```toml
+[dependencies]
+proc-macro0 = { version = "1.0", features = ["sync", "span-locations"] }
+```
 
 ## Unstable features
 
-The default feature set of proc-macro2 tracks the most recent stable compiler
-API. Functionality in `proc_macro` that is not yet stable is not exposed by
-proc-macro2 by default.
-
-To opt into the additional APIs available in the most recent nightly compiler,
-the `procmacro2_semver_exempt` config flag must be passed to rustc. We will
-polyfill those nightly-only APIs back to Rust 1.68.0. As these are unstable APIs
-that track the nightly compiler, minor versions of proc-macro2 may make breaking
-changes to them at any time.
+The `procmacro2_semver_exempt` config flag enables unstable APIs:
 
 ```
 RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build
 ```
-
-Note that this must not only be done for your crate, but for any crate that
-depends on your crate. This infectious nature is intentional, as it serves as a
-reminder that you are outside of the normal semver guarantees.
-
-Semver exempt methods are marked as such in the proc-macro2 documentation.
 
 <br>
 
