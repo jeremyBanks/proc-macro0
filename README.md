@@ -1,4 +1,4 @@
-# proc-macro0
+# jeb-proc-macro0
 
 A fork of [proc-macro2](https://github.com/dtolnay/proc-macro2) with mutually
 exclusive feature flags for different use cases:
@@ -16,7 +16,7 @@ implementation that is neither proc-macro compatible nor thread-safe.
 
 ```toml
 [dependencies]
-proc-macro0 = { version = "1.0", features = ["proc-macro"] }
+jeb-proc-macro0 = { version = "1.0", features = ["proc-macro"] }
 ```
 
 When enabled, proc-macro0 behaves identically to proc-macro2:
@@ -30,7 +30,7 @@ Use this when writing procedural macros with syn/quote.
 
 ```toml
 [dependencies]
-proc-macro0 = { version = "1.0", features = ["sync"] }
+jeb-proc-macro0 = { version = "1.0", features = ["sync"] }
 ```
 
 When enabled:
@@ -99,7 +99,7 @@ location of a token.
 
 ```toml
 [dependencies]
-proc-macro0 = { version = "1.0", features = ["sync", "span-locations"] }
+jeb-proc-macro0 = { version = "1.0", features = ["sync", "span-locations"] }
 ```
 
 ### `proc-macro2` (interoperability)
@@ -108,7 +108,7 @@ Enable conversions between proc-macro0 and proc-macro2 types via `From` impls.
 
 ```toml
 [dependencies]
-proc-macro0 = { version = "1.0", features = ["sync", "proc-macro2"] }
+jeb-proc-macro0 = { version = "1.0", features = ["sync", "proc-macro2"] }
 ```
 
 When enabled, you can convert between the two crates:

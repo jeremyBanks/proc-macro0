@@ -1,5 +1,5 @@
 [package]
-name = "proc-macro0"
+name = "jeb-proc-macro0"
 version = "1.0.104"
 authors = ["David Tolnay <dtolnay@gmail.com>", "Alex Crichton <alex@alexcrichton.com>"]
 autobenches = false
@@ -11,6 +11,9 @@ keywords = ["macros", "syn"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jeremyBanks/proc-macro0"
 rust-version = "1.68"
+
+[lib]
+name = "proc_macro0"
 
 [package.metadata.docs.rs]
 rustc-args = ["--cfg=procmacro2_semver_exempt"]
@@ -82,4 +85,4 @@ members = ["benches/bench-libproc-macro", "tests/ui"]
 # carries the second-most-recent version number, pulling in quote which resolves
 # to a dependency on the just-published most recent version number. Thus the
 # patch will fail to apply because the version numbers are different.
-proc-macro0 = { path = "." }
+jeb-proc-macro0 = { path = "." }

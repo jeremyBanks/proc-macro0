@@ -149,6 +149,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
+name = "jeb-proc-macro0"
+version = "1.0.104"
+dependencies = [
+ "flate2",
+ "once_cell",
+ "parking_lot",
+ "proc-macro2",
+ "quote",
+ "rayon",
+ "rustversion",
+ "tar",
+ "unicode-ident",
+]
+
+[[package]]
+name = "jeb-proc-macro0-ui-test"
+version = "0.0.0"
+dependencies = [
+ "jeb-proc-macro0",
+ "rustversion",
+ "trybuild",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.178"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -224,30 +248,6 @@ dependencies = [
  "redox_syscall 0.2.13",
  "smallvec",
  "windows-sys 0.36.1",
-]
-
-[[package]]
-name = "proc-macro0"
-version = "1.0.104"
-dependencies = [
- "flate2",
- "once_cell",
- "parking_lot",
- "proc-macro2",
- "quote",
- "rayon",
- "rustversion",
- "tar",
- "unicode-ident",
-]
-
-[[package]]
-name = "proc-macro0-ui-test"
-version = "0.0.0"
-dependencies = [
- "proc-macro0",
- "rustversion",
- "trybuild",
 ]
 
 [[package]]
