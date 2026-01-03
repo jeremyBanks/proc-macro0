@@ -102,6 +102,37 @@ location of a token.
 proc-macro0 = { version = "1.0", features = ["sync", "span-locations"] }
 ```
 
+### `proc-macro2` (interoperability)
+
+Enable conversions between proc-macro0 and proc-macro2 types via `From` impls.
+
+```toml
+[dependencies]
+proc-macro0 = { version = "1.0", features = ["sync", "proc-macro2"] }
+```
+
+When enabled, you can convert between the two crates:
+
+```rust
+use proc_macro0::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
+
+// Convert proc-macro2 -> proc-macro0 (re-parses for valid span info)
+let pm2: TokenStream2 = "fn foo() {}".parse().unwrap();
+let pm0: TokenStream = pm2.into();
+
+// Convert proc-macro0 -> proc-macro2
+let back: TokenStream2 = pm0.into();
+```
+
+**What's preserved and lost:**
+- Converting pm2 → pm0: Token content preserved; `Delimiter::None` groups and
+  original spans lost (but new valid spans created in pm0's source map)
+- Converting pm0 → pm2: All structure preserved; spans become `call_site()`
+
+Use `TokenStream::from_proc_macro2_structural()` if you need to preserve
+`Delimiter::None` groups exactly (at the cost of all span information).
+
 ## Unstable features
 
 The `procmacro2_semver_exempt` config flag enables unstable APIs:

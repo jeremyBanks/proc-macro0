@@ -233,6 +233,7 @@ dependencies = [
  "flate2",
  "once_cell",
  "parking_lot",
+ "proc-macro2",
  "quote",
  "rayon",
  "rustversion",

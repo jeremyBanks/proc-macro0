@@ -32,6 +32,9 @@ unicode-ident = "1.0"
 once_cell = { version = "1.13", optional = true }
 parking_lot = { version = "0.12", optional = true }
 
+# Optional: for conversions between proc-macro0 and proc-macro2 types
+proc-macro2 = { version = "1.0", optional = true }
+
 [dev-dependencies]
 flate2 = "1.0"
 quote = { version = "1.0", default-features = false }
@@ -48,6 +51,10 @@ proc-macro = []
 # When enabled, always uses the fallback implementation with Arc/RwLock instead
 # of Rc/RefCell, making all types Send + Sync. Mutually exclusive with `proc-macro`.
 sync = ["once_cell", "parking_lot"]
+
+# Enable conversions between proc-macro0 and proc-macro2 types via From impls.
+# Note: Span information is lost during conversion (replaced with call_site()).
+proc-macro2 = ["dep:proc-macro2"]
 
 # Default is neither - basic fallback, not thread-safe, not proc-macro compatible.
 # Users must explicitly choose `proc-macro` OR `sync` based on their use case.

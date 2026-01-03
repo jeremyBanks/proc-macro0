@@ -176,6 +176,9 @@ pub mod fallback;
 
 pub mod extra;
 
+#[cfg(feature = "proc-macro2")]
+mod compat;
+
 #[cfg(not(wrap_proc_macro))]
 use crate::fallback as imp;
 #[path = "wrapper.rs"]
