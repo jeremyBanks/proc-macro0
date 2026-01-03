@@ -1,6 +1,7 @@
+#![allow(clippy::extra_unused_type_parameters)]
+
 use proc_macro0::{
-    Delimiter, Group, Ident, LexError, LineColumn, Literal, Punct, SourceFile, Spacing, Span,
-    TokenStream, TokenTree,
+    Delimiter, Group, Ident, LexError, Literal, Punct, Spacing, Span, TokenStream, TokenTree,
 };
 
 macro_rules! assert_impl {
@@ -20,6 +21,7 @@ macro_rules! assert_impl {
             $(
                 {
                     // Implemented for types that implement $marker.
+                    #[allow(dead_code)]
                     trait IsNotImplemented {
                         fn assert_not_implemented() {}
                     }
@@ -43,24 +45,28 @@ macro_rules! assert_impl {
 assert_impl!(Delimiter is Send and Sync);
 assert_impl!(Spacing is Send and Sync);
 
-assert_impl!(Group is Send and Sync);
-assert_impl!(Ident is Send and Sync);
-assert_impl!(LexError is Send and Sync);
-assert_impl!(Literal is Send and Sync);
-assert_impl!(Punct is Send and Sync);
-assert_impl!(Span is Send and Sync);
-assert_impl!(TokenStream is Send and Sync);
-assert_impl!(TokenTree is Send and Sync);
+assert_impl!(Group is not Send or Sync);
+assert_impl!(Ident is not Send or Sync);
+assert_impl!(LexError is not Send or Sync);
+assert_impl!(Literal is not Send or Sync);
+assert_impl!(Punct is not Send or Sync);
+assert_impl!(Span is not Send or Sync);
+assert_impl!(TokenStream is not Send or Sync);
+assert_impl!(TokenTree is not Send or Sync);
 
-assert_impl!(LineColumn is Send and Sync);
+#[cfg(procmacro2_semver_exempt)]
+mod semver_exempt {
+    use proc_macro0::LineColumn;
 
-assert_impl!(SourceFile is Send and Sync);
+    assert_impl!(LineColumn is Send and Sync);
+}
 
 mod unwind_safe {
+    #[cfg(procmacro2_semver_exempt)]
+    use proc_macro0::LineColumn;
     use proc_macro0::{
         Delimiter, Group, Ident, LexError, Literal, Punct, Spacing, Span, TokenStream, TokenTree,
     };
-    use proc_macro0::{LineColumn, SourceFile};
     use std::panic::{RefUnwindSafe, UnwindSafe};
 
     macro_rules! assert_unwind_safe {
@@ -84,8 +90,8 @@ mod unwind_safe {
         TokenTree
     }
 
+    #[cfg(procmacro2_semver_exempt)]
     assert_unwind_safe! {
         LineColumn
-        SourceFile
     }
 }

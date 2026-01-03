@@ -1,35 +1,198 @@
+//! [![github]](https://github.com/dtolnay/proc-macro2)&ensp;[![crates-io]](https://crates.io/crates/proc-macro2)&ensp;[![docs-rs]](crate)
+//!
+//! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
+//! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
+//! [docs-rs]: https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs
+//!
+//! <br>
+//!
+//! A wrapper around the procedural macro API of the compiler's [`proc_macro`]
+//! crate. This library serves two purposes:
+//!
+//! - **Bring proc-macro-like functionality to other contexts like build.rs and
+//!   main.rs.** Types from `proc_macro` are entirely specific to procedural
+//!   macros and cannot ever exist in code outside of a procedural macro.
+//!   Meanwhile `proc_macro0` types may exist anywhere including non-macro code.
+//!   By developing foundational libraries like [syn] and [quote] against
+//!   `proc_macro0` rather than `proc_macro`, the procedural macro ecosystem
+//!   becomes easily applicable to many other use cases and we avoid
+//!   reimplementing non-macro equivalents of those libraries.
+//!
+//! - **Make procedural macros unit testable.** As a consequence of being
+//!   specific to procedural macros, nothing that uses `proc_macro` can be
+//!   executed from a unit test. In order for helper libraries or components of
+//!   a macro to be testable in isolation, they must be implemented using
+//!   `proc_macro0`.
+//!
+//! [syn]: https://github.com/dtolnay/syn
+//! [quote]: https://github.com/dtolnay/quote
+//!
+//! # Usage
+//!
+//! The skeleton of a typical procedural macro typically looks like this:
+//!
+//! ```
+//! extern crate proc_macro;
+//!
+//! # const IGNORE: &str = stringify! {
+//! #[proc_macro_derive(MyDerive)]
+//! # };
+//! # #[cfg(wrap_proc_macro)]
+//! pub fn my_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+//!     let input = proc_macro0::TokenStream::from(input);
+//!
+//!     let output: proc_macro0::TokenStream = {
+//!         /* transform input */
+//!         # input
+//!     };
+//!
+//!     proc_macro::TokenStream::from(output)
+//! }
+//! ```
+//!
+//! If parsing with [Syn], you'll use [`parse_macro_input!`] instead to
+//! propagate parse errors correctly back to the compiler when parsing fails.
+//!
+//! [`parse_macro_input!`]: https://docs.rs/syn/2.0/syn/macro.parse_macro_input.html
+//!
+//! # Unstable features
+//!
+//! The default feature set of proc-macro2 tracks the most recent stable
+//! compiler API. Functionality in `proc_macro` that is not yet stable is not
+//! exposed by proc-macro2 by default.
+//!
+//! To opt into the additional APIs available in the most recent nightly
+//! compiler, the `procmacro2_semver_exempt` config flag must be passed to
+//! rustc. We will polyfill those nightly-only APIs back to Rust 1.68.0. As
+//! these are unstable APIs that track the nightly compiler, minor versions of
+//! proc-macro2 may make breaking changes to them at any time.
+//!
+//! ```sh
+//! RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build
+//! ```
+//!
+//! Note that this must not only be done for your crate, but for any crate that
+//! depends on your crate. This infectious nature is intentional, as it serves
+//! as a reminder that you are outside of the normal semver guarantees.
+//!
+//! Semver exempt methods are marked as such in the proc-macro2 documentation.
+//!
+//! # Thread-Safety
+//!
+//! Most types in this crate are `!Sync` because the underlying compiler
+//! types make use of thread-local memory, meaning they cannot be accessed from
+//! a different thread.
+
+// Proc-macro2 types in rustdoc of other crates get linked to here.
+#![doc(html_root_url = "https://docs.rs/proc-macro2/1.0.104")]
+#![cfg_attr(any(proc_macro_span, super_unstable), feature(proc_macro_span))]
+#![cfg_attr(super_unstable, feature(proc_macro_def_site))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![allow(
     clippy::cast_lossless,
     clippy::cast_possible_truncation,
+    clippy::checked_conversions,
     clippy::doc_markdown,
+    clippy::elidable_lifetime_names,
+    clippy::incompatible_msrv,
     clippy::items_after_statements,
+    clippy::iter_without_into_iter,
+    clippy::let_underscore_untyped,
     clippy::manual_assert,
+    clippy::manual_range_contains,
+    clippy::missing_panics_doc,
+    clippy::missing_safety_doc,
     clippy::must_use_candidate,
     clippy::needless_doctest_main,
+    clippy::needless_lifetimes,
+    clippy::new_without_default,
     clippy::return_self_not_must_use,
     clippy::shadow_unrelated,
     clippy::trivially_copy_pass_by_ref,
+    clippy::uninlined_format_args,
     clippy::unnecessary_wraps,
     clippy::unused_self,
     clippy::used_underscore_binding,
     clippy::vec_init_then_push
 )]
-#![warn(unsafe_code)]
-#![feature(doc_auto_cfg, doc_cfg)]
+#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
-mod fallback;
-mod incompatible;
+#[cfg(all(procmacro2_semver_exempt, wrap_proc_macro, not(super_unstable)))]
+compile_error! {"\
+    Something is not right. If you've tried to turn on \
+    procmacro2_semver_exempt, you need to ensure that it \
+    is turned on for the compilation of the proc-macro2 \
+    build script as well.
+"}
+
+#[cfg(all(
+    procmacro2_nightly_testing,
+    feature = "proc-macro",
+    not(proc_macro_span)
+))]
+compile_error! {"\
+    Build script probe failed to compile.
+"}
+
+extern crate alloc;
+
+#[cfg(feature = "proc-macro")]
+extern crate proc_macro;
+
+mod marker;
 mod parse;
+mod probe;
+mod rcvec;
 
+#[cfg(wrap_proc_macro)]
+mod detection;
+
+// Public for proc_macro0::fallback::force() and unforce(), but those are quite
+// a niche use case so we omit it from rustdoc.
+#[doc(hidden)]
+pub mod fallback;
+
+pub mod extra;
+
+#[cfg(not(wrap_proc_macro))]
 use crate::fallback as imp;
+#[path = "wrapper.rs"]
+#[cfg(wrap_proc_macro)]
+mod imp;
 
+#[cfg(span_locations)]
+mod location;
+
+#[cfg(procmacro2_semver_exempt)]
+mod num;
+#[cfg(procmacro2_semver_exempt)]
+#[allow(dead_code)]
+mod rustc_literal_escaper;
+
+use crate::extra::DelimSpan;
+use crate::marker::{ProcMacroAutoTraits, MARKER};
+#[cfg(procmacro2_semver_exempt)]
+use crate::rustc_literal_escaper::MixedUnit;
+use core::cmp::Ordering;
+use core::fmt::{self, Debug, Display};
+use core::hash::{Hash, Hasher};
+#[cfg(span_locations)]
+use core::ops::Range;
+use core::ops::RangeBounds;
+use core::str::FromStr;
 use std::error::Error;
-use std::fmt::{self, Debug, Display};
-use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::ops::RangeBounds;
-use std::str::FromStr;
-use std::{cmp::Ordering, path::PathBuf};
+use std::ffi::CStr;
+#[cfg(span_locations)]
+use std::path::PathBuf;
+
+#[cfg(span_locations)]
+#[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
+pub use crate::location::LineColumn;
+
+#[cfg(procmacro2_semver_exempt)]
+#[cfg_attr(docsrs, doc(cfg(procmacro2_semver_exempt)))]
+pub use crate::rustc_literal_escaper::EscapeError;
 
 /// An abstract stream of tokens, or more concretely a sequence of token trees.
 ///
@@ -41,20 +204,28 @@ use std::{cmp::Ordering, path::PathBuf};
 #[derive(Clone)]
 pub struct TokenStream {
     inner: imp::TokenStream,
+    _marker: ProcMacroAutoTraits,
 }
 
 /// Error returned from `TokenStream::from_str`.
 pub struct LexError {
     inner: imp::LexError,
+    _marker: ProcMacroAutoTraits,
 }
 
 impl TokenStream {
     fn _new(inner: imp::TokenStream) -> Self {
-        TokenStream { inner }
+        TokenStream {
+            inner,
+            _marker: MARKER,
+        }
     }
 
-    fn _new_stable(inner: fallback::TokenStream) -> Self {
-        TokenStream { inner }
+    fn _new_fallback(inner: fallback::TokenStream) -> Self {
+        TokenStream {
+            inner: imp::TokenStream::from(inner),
+            _marker: MARKER,
+        }
     }
 
     /// Returns an empty `TokenStream` containing no token trees.
@@ -88,8 +259,29 @@ impl FromStr for TokenStream {
     type Err = LexError;
 
     fn from_str(src: &str) -> Result<TokenStream, LexError> {
-        let e = src.parse().map_err(|e| LexError { inner: e })?;
-        Ok(TokenStream::_new(e))
+        match imp::TokenStream::from_str_checked(src) {
+            Ok(tokens) => Ok(TokenStream::_new(tokens)),
+            Err(lex) => Err(LexError {
+                inner: lex,
+                _marker: MARKER,
+            }),
+        }
+    }
+}
+
+#[cfg(feature = "proc-macro")]
+#[cfg_attr(docsrs, doc(cfg(feature = "proc-macro")))]
+impl From<proc_macro::TokenStream> for TokenStream {
+    fn from(inner: proc_macro::TokenStream) -> Self {
+        TokenStream::_new(imp::TokenStream::from(inner))
+    }
+}
+
+#[cfg(feature = "proc-macro")]
+#[cfg_attr(docsrs, doc(cfg(feature = "proc-macro")))]
+impl From<TokenStream> for proc_macro::TokenStream {
+    fn from(inner: TokenStream) -> Self {
+        proc_macro::TokenStream::from(inner.inner)
     }
 }
 
@@ -100,8 +292,8 @@ impl From<TokenTree> for TokenStream {
 }
 
 impl Extend<TokenTree> for TokenStream {
-    fn extend<I: IntoIterator<Item = TokenTree>>(&mut self, streams: I) {
-        self.inner.extend(streams);
+    fn extend<I: IntoIterator<Item = TokenTree>>(&mut self, tokens: I) {
+        self.inner.extend(tokens);
     }
 }
 
@@ -112,12 +304,38 @@ impl Extend<TokenStream> for TokenStream {
     }
 }
 
-/// Collects a number of token trees into a single stream.
-impl FromIterator<TokenTree> for TokenStream {
-    fn from_iter<I: IntoIterator<Item = TokenTree>>(streams: I) -> Self {
-        TokenStream::_new(streams.into_iter().collect())
+impl Extend<Group> for TokenStream {
+    fn extend<I: IntoIterator<Item = Group>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Group));
     }
 }
+
+impl Extend<Ident> for TokenStream {
+    fn extend<I: IntoIterator<Item = Ident>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Ident));
+    }
+}
+
+impl Extend<Punct> for TokenStream {
+    fn extend<I: IntoIterator<Item = Punct>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Punct));
+    }
+}
+
+impl Extend<Literal> for TokenStream {
+    fn extend<I: IntoIterator<Item = Literal>>(&mut self, tokens: I) {
+        self.inner
+            .extend(tokens.into_iter().map(TokenTree::Literal));
+    }
+}
+
+/// Collects a number of token trees into a single stream.
+impl FromIterator<TokenTree> for TokenStream {
+    fn from_iter<I: IntoIterator<Item = TokenTree>>(tokens: I) -> Self {
+        TokenStream::_new(tokens.into_iter().collect())
+    }
+}
+
 impl FromIterator<TokenStream> for TokenStream {
     fn from_iter<I: IntoIterator<Item = TokenStream>>(streams: I) -> Self {
         TokenStream::_new(streams.into_iter().map(|i| i.inner).collect())
@@ -161,85 +379,26 @@ impl Display for LexError {
 
 impl Error for LexError {}
 
-/// The source file of a given `Span`.
-#[derive(Clone, PartialEq, Eq)]
-pub struct SourceFile {
-    inner: imp::SourceFile,
-}
-
-impl SourceFile {
-    fn _new(inner: imp::SourceFile) -> Self {
-        SourceFile { inner }
-    }
-
-    /// Get the path to this source file.
-    ///
-    /// ### Note
-    ///
-    /// If the code span associated with this `SourceFile` was generated by an
-    /// external macro, this may not be an actual path on the filesystem. Use
-    /// [`is_real`] to check.
-    ///
-    /// Also note that even if `is_real` returns `true`, if
-    /// `--remap-path-prefix` was passed on the command line, the path as given
-    /// may not actually be valid.
-    ///
-    /// [`is_real`]: #method.is_real
-    pub fn path(&self) -> PathBuf {
-        self.inner.path()
-    }
-
-    /// Returns `true` if this source file is a real source file, and not
-    /// generated by an external macro's expansion.
-    pub fn is_real(&self) -> bool {
-        self.inner.is_real()
-    }
-}
-
-impl Debug for SourceFile {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(&self.inner, f)
-    }
-}
-
-/// A line-column pair representing the start or end of a `Span`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct LineColumn {
-    /// The 1-indexed line in the source file on which the span starts or ends
-    /// (inclusive).
-    pub line: usize,
-    /// The 0-indexed column (in UTF-8 characters) in the source file on which
-    /// the span starts or ends (inclusive).
-    pub column: usize,
-}
-
-impl Ord for LineColumn {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.line
-            .cmp(&other.line)
-            .then(self.column.cmp(&other.column))
-    }
-}
-
-impl PartialOrd for LineColumn {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// A region of source code, along with macro expansion information.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone)]
 pub struct Span {
     inner: imp::Span,
+    _marker: ProcMacroAutoTraits,
 }
 
 impl Span {
     fn _new(inner: imp::Span) -> Self {
-        Span { inner }
+        Span {
+            inner,
+            _marker: MARKER,
+        }
     }
 
-    fn _new_stable(inner: fallback::Span) -> Self {
-        Span { inner }
+    fn _new_fallback(inner: fallback::Span) -> Self {
+        Span {
+            inner: imp::Span::from(inner),
+            _marker: MARKER,
+        }
     }
 
     /// The span of the invocation of the current procedural macro.
@@ -254,14 +413,15 @@ impl Span {
     /// The span located at the invocation of the procedural macro, but with
     /// local variables, labels, and `$crate` resolved at the definition site
     /// of the macro. This is the same hygiene behavior as `macro_rules`.
-    ///
-    /// This function requires Rust 1.45 or later.
     pub fn mixed_site() -> Self {
         Span::_new(imp::Span::mixed_site())
     }
 
     /// A span that resolves at the macro definition site.
-
+    ///
+    /// This method is semver exempt and not exposed by default.
+    #[cfg(procmacro2_semver_exempt)]
+    #[cfg_attr(docsrs, doc(cfg(procmacro2_semver_exempt)))]
     pub fn def_site() -> Self {
         Span::_new(imp::Span::def_site())
     }
@@ -278,48 +438,125 @@ impl Span {
         Span::_new(self.inner.located_at(other.inner))
     }
 
-    /// The original source file into which this span points.
+    /// Convert `proc_macro0::Span` to `proc_macro::Span`.
+    ///
+    /// This method is available when building with a nightly compiler, or when
+    /// building with rustc 1.29+ *without* semver exempt features.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from outside of a procedural macro. Unlike
+    /// `proc_macro0::Span`, the `proc_macro::Span` type can only exist within
+    /// the context of a procedural macro invocation.
+    #[cfg(wrap_proc_macro)]
+    pub fn unwrap(self) -> proc_macro::Span {
+        self.inner.unwrap()
+    }
 
-    pub fn source_file(&self) -> SourceFile {
-        SourceFile::_new(self.inner.source_file())
+    // Soft deprecated. Please use Span::unwrap.
+    #[cfg(wrap_proc_macro)]
+    #[doc(hidden)]
+    pub fn unstable(self) -> proc_macro::Span {
+        self.unwrap()
+    }
+
+    /// Returns the span's byte position range in the source file.
+    ///
+    /// This method requires the `"span-locations"` feature to be enabled.
+    ///
+    /// When executing in a procedural macro context, the returned range is only
+    /// accurate if compiled with a nightly toolchain. The stable toolchain does
+    /// not have this information available. When executing outside of a
+    /// procedural macro, such as main.rs or build.rs, the byte range is always
+    /// accurate regardless of toolchain.
+    #[cfg(span_locations)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
+    pub fn byte_range(&self) -> Range<usize> {
+        self.inner.byte_range()
     }
 
     /// Get the starting line/column in the source file for this span.
     ///
-    /// When executing in a procedural macro context, the returned line/column
-    /// are only meaningful if compiled with a nightly toolchain. The stable
-    /// toolchain does not have this information available. When executing
-    /// outside of a procedural macro, such as main.rs or build.rs, the
-    /// line/column are always meaningful regardless of toolchain.
-    pub fn start(&self) -> LineColumn {
-        let imp::LineColumn { line, column } = self.inner.start();
-        LineColumn { line, column }
-    }
-
-    /// Get the ending line/column in the source file for this span.
+    /// This method requires the `"span-locations"` feature to be enabled.
     ///
     /// When executing in a procedural macro context, the returned line/column
     /// are only meaningful if compiled with a nightly toolchain. The stable
     /// toolchain does not have this information available. When executing
     /// outside of a procedural macro, such as main.rs or build.rs, the
     /// line/column are always meaningful regardless of toolchain.
+    #[cfg(span_locations)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
+    pub fn start(&self) -> LineColumn {
+        self.inner.start()
+    }
+
+    /// Get the ending line/column in the source file for this span.
+    ///
+    /// This method requires the `"span-locations"` feature to be enabled.
+    ///
+    /// When executing in a procedural macro context, the returned line/column
+    /// are only meaningful if compiled with a nightly toolchain. The stable
+    /// toolchain does not have this information available. When executing
+    /// outside of a procedural macro, such as main.rs or build.rs, the
+    /// line/column are always meaningful regardless of toolchain.
+    #[cfg(span_locations)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
     pub fn end(&self) -> LineColumn {
-        let imp::LineColumn { line, column } = self.inner.end();
-        LineColumn { line, column }
+        self.inner.end()
+    }
+
+    /// The path to the source file in which this span occurs, for display
+    /// purposes.
+    ///
+    /// This might not correspond to a valid file system path. It might be
+    /// remapped, or might be an artificial path such as `"<macro expansion>"`.
+    #[cfg(span_locations)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
+    pub fn file(&self) -> String {
+        self.inner.file()
+    }
+
+    /// The path to the source file in which this span occurs on disk.
+    ///
+    /// This is the actual path on disk. It is unaffected by path remapping.
+    ///
+    /// This path should not be embedded in the output of the macro; prefer
+    /// `file()` instead.
+    #[cfg(span_locations)]
+    #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
+    pub fn local_file(&self) -> Option<PathBuf> {
+        self.inner.local_file()
     }
 
     /// Create a new span encompassing `self` and `other`.
     ///
     /// Returns `None` if `self` and `other` are from different files.
+    ///
+    /// Warning: the underlying [`proc_macro::Span::join`] method is
+    /// nightly-only. When called from within a procedural macro not using a
+    /// nightly compiler, this method will always return `None`.
     pub fn join(&self, other: Span) -> Option<Span> {
         self.inner.join(other.inner).map(Span::_new)
     }
 
-    #[doc(hidden)]
-    #[allow(clippy::should_implement_trait)]
     /// Compares two spans to see if they're equal.
+    ///
+    /// This method is semver exempt and not exposed by default.
+    #[cfg(procmacro2_semver_exempt)]
+    #[cfg_attr(docsrs, doc(cfg(procmacro2_semver_exempt)))]
     pub fn eq(&self, other: &Span) -> bool {
-        self == other
+        self.inner.eq(&other.inner)
+    }
+
+    /// Returns the source text behind a span. This preserves the original
+    /// source code, including spaces and comments. It only returns a result if
+    /// the span corresponds to real source code.
+    ///
+    /// Note: The observable result of a macro should only rely on the tokens
+    /// and not on this source text. The result of this function is a best
+    /// effort to be used for diagnostics only.
+    pub fn source_text(&self) -> Option<String> {
+        self.inner.source_text()
     }
 }
 
@@ -371,25 +608,25 @@ impl TokenTree {
 }
 
 impl From<Group> for TokenTree {
-    fn from(g: Group) -> TokenTree {
+    fn from(g: Group) -> Self {
         TokenTree::Group(g)
     }
 }
 
 impl From<Ident> for TokenTree {
-    fn from(g: Ident) -> TokenTree {
+    fn from(g: Ident) -> Self {
         TokenTree::Ident(g)
     }
 }
 
 impl From<Punct> for TokenTree {
-    fn from(g: Punct) -> TokenTree {
+    fn from(g: Punct) -> Self {
         TokenTree::Punct(g)
     }
 }
 
 impl From<Literal> for TokenTree {
-    fn from(g: Literal) -> TokenTree {
+    fn from(g: Literal) -> Self {
         TokenTree::Literal(g)
     }
 }
@@ -446,13 +683,25 @@ pub enum Delimiter {
     Brace,
     /// `[ ... ]`
     Bracket,
-    /// `Ø ... Ø`
+    /// `∅ ... ∅`
     ///
-    /// An implicit delimiter, that may, for example, appear around tokens
+    /// An invisible delimiter, that may, for example, appear around tokens
     /// coming from a "macro variable" `$var`. It is important to preserve
     /// operator priorities in cases like `$var * 3` where `$var` is `1 + 2`.
-    /// Implicit delimiters may not survive roundtrip of a token stream through
+    /// Invisible delimiters may not survive roundtrip of a token stream through
     /// a string.
+    ///
+    /// <div class="warning">
+    ///
+    /// Note: rustc currently can ignore the grouping of tokens delimited by `None` in the output
+    /// of a proc_macro. Only `None`-delimited groups created by a macro_rules macro in the input
+    /// of a proc_macro macro are preserved, and only in very specific circumstances.
+    /// Any `None`-delimited groups (re)created by a proc_macro will therefore not preserve
+    /// operator priorities as indicated above. The other `Delimiter` variants should be used
+    /// instead in this context. This is a rustc bug. For details, see
+    /// [rust-lang/rust#67062](https://github.com/rust-lang/rust/issues/67062).
+    ///
+    /// </div>
     None,
 }
 
@@ -461,8 +710,10 @@ impl Group {
         Group { inner }
     }
 
-    fn _new_stable(inner: fallback::Group) -> Self {
-        Group { inner }
+    fn _new_fallback(inner: fallback::Group) -> Self {
+        Group {
+            inner: imp::Group::from(inner),
+        }
     }
 
     /// Creates a new `Group` with the given delimiter and token stream.
@@ -476,7 +727,8 @@ impl Group {
         }
     }
 
-    /// Returns the delimiter of this `Group`
+    /// Returns the punctuation used as the delimiter for this group: a set of
+    /// parentheses, square brackets, or curly braces.
     pub fn delimiter(&self) -> Delimiter {
         self.inner.delimiter()
     }
@@ -518,6 +770,13 @@ impl Group {
     /// ```
     pub fn span_close(&self) -> Span {
         Span::_new(self.inner.span_close())
+    }
+
+    /// Returns an object that holds this group's `span_open()` and
+    /// `span_close()` together (in a more compact representation than holding
+    /// those 2 spans individually).
+    pub fn delim_span(&self) -> DelimSpan {
+        DelimSpan::new(&self.inner)
     }
 
     /// Configures the span for this `Group`'s delimiters, but not its internal
@@ -579,10 +838,16 @@ impl Punct {
     /// The returned `Punct` will have the default span of `Span::call_site()`
     /// which can be further configured with the `set_span` method below.
     pub fn new(ch: char, spacing: Spacing) -> Self {
-        Punct {
-            ch,
-            spacing,
-            span: Span::call_site(),
+        if let '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | ',' | '-' | '.' | '/' | ':' | ';'
+        | '<' | '=' | '>' | '?' | '@' | '^' | '|' | '~' = ch
+        {
+            Punct {
+                ch,
+                spacing,
+                span: Span::call_site(),
+            }
+        } else {
+            panic!("unsupported proc macro punctuation character {:?}", ch);
         }
     }
 
@@ -643,7 +908,7 @@ impl Debug for Punct {
 /// Rust keywords. Use `input.call(Ident::parse_any)` when parsing to match the
 /// behaviour of `Ident::new`.
 ///
-/// [`Parse`]: https://docs.rs/syn/1.0/syn/parse/trait.Parse.html
+/// [`Parse`]: https://docs.rs/syn/2.0/syn/parse/trait.Parse.html
 ///
 /// # Examples
 ///
@@ -658,6 +923,25 @@ impl Debug for Punct {
 ///     let call_ident = Ident::new("calligraphy", Span::call_site());
 ///
 ///     println!("{}", call_ident);
+/// }
+/// ```
+///
+/// An ident can be interpolated into a token stream using the `quote!` macro
+/// from the `quote` crate (note: `quote` depends on `proc-macro2`, not `proc-macro0`).
+///
+/// ```ignore
+/// use proc_macro0::{Ident, Span};
+/// use quote::quote;
+///
+/// fn main() {
+///     let ident = Ident::new("demo", Span::call_site());
+///
+///     // Create a variable binding whose name is this ident.
+///     let expanded = quote! { let #ident = 10; };
+///
+///     // Create a variable binding with a slightly different name.
+///     let temp_ident = Ident::new(&format!("new_{}", ident), Span::call_site());
+///     let expanded = quote! { let #temp_ident = 10; };
 /// }
 /// ```
 ///
@@ -678,11 +962,22 @@ impl Debug for Punct {
 #[derive(Clone)]
 pub struct Ident {
     inner: imp::Ident,
+    _marker: ProcMacroAutoTraits,
 }
 
 impl Ident {
     fn _new(inner: imp::Ident) -> Self {
-        Ident { inner }
+        Ident {
+            inner,
+            _marker: MARKER,
+        }
+    }
+
+    fn _new_fallback(inner: fallback::Ident) -> Self {
+        Ident {
+            inner: imp::Ident::from(inner),
+            _marker: MARKER,
+        }
     }
 
     /// Creates a new `Ident` with the given `string` as well as the specified
@@ -712,12 +1007,13 @@ impl Ident {
     /// Panics if the input string is neither a keyword nor a legal variable
     /// name. If you are not sure whether the string contains an identifier and
     /// need to handle an error case, use
-    /// <a href="https://docs.rs/syn/1.0/syn/fn.parse_str.html"><code
+    /// <a href="https://docs.rs/syn/2.0/syn/fn.parse_str.html"><code
     ///   style="padding-right:0;">syn::parse_str</code></a><code
     ///   style="padding-left:0;">::&lt;Ident&gt;</code>
     /// rather than `Ident::new`.
+    #[track_caller]
     pub fn new(string: &str, span: Span) -> Self {
-        Ident::_new(imp::Ident::new(string, span.inner))
+        Ident::_new(imp::Ident::new_checked(string, span.inner))
     }
 
     /// Same as `Ident::new`, but creates a raw identifier (`r#ident`). The
@@ -725,12 +1021,9 @@ impl Ident {
     /// (including keywords, e.g. `fn`). Keywords which are usable in path
     /// segments (e.g. `self`, `super`) are not supported, and will cause a
     /// panic.
+    #[track_caller]
     pub fn new_raw(string: &str, span: Span) -> Self {
-        Ident::_new_raw(string, span)
-    }
-
-    fn _new_raw(string: &str, span: Span) -> Self {
-        Ident::_new(imp::Ident::new_raw(string, span.inner))
+        Ident::_new(imp::Ident::new_raw_checked(string, span.inner))
     }
 
     /// Returns the span of this `Ident`.
@@ -803,6 +1096,7 @@ impl Debug for Ident {
 #[derive(Clone)]
 pub struct Literal {
     inner: imp::Literal,
+    _marker: ProcMacroAutoTraits,
 }
 
 macro_rules! suffixed_int_literals {
@@ -847,11 +1141,17 @@ macro_rules! unsuffixed_int_literals {
 
 impl Literal {
     fn _new(inner: imp::Literal) -> Self {
-        Literal { inner }
+        Literal {
+            inner,
+            _marker: MARKER,
+        }
     }
 
-    fn _new_stable(inner: fallback::Literal) -> Self {
-        Literal { inner }
+    fn _new_fallback(inner: fallback::Literal) -> Self {
+        Literal {
+            inner: imp::Literal::from(inner),
+            _marker: MARKER,
+        }
     }
 
     suffixed_int_literals! {
@@ -889,9 +1189,9 @@ impl Literal {
     /// This constructor is similar to those like `Literal::i8_unsuffixed` where
     /// the float's value is emitted directly into the token but no suffix is
     /// used, so it may be inferred to be a `f64` later in the compiler.
-    /// Literals created from negative numbers may not survive roundtrips through
-    /// `TokenStream` or strings and may be broken into two tokens (`-` and
-    /// positive literal).
+    /// Literals created from negative numbers may not survive round-trips
+    /// through `TokenStream` or strings and may be broken into two tokens (`-`
+    /// and positive literal).
     ///
     /// # Panics
     ///
@@ -908,7 +1208,7 @@ impl Literal {
     /// specified is the preceding part of the token and `f64` is the suffix of
     /// the token. This token will always be inferred to be an `f64` in the
     /// compiler. Literals created from negative numbers may not survive
-    /// roundtrips through `TokenStream` or strings and may be broken into two
+    /// round-trips through `TokenStream` or strings and may be broken into two
     /// tokens (`-` and positive literal).
     ///
     /// # Panics
@@ -925,9 +1225,9 @@ impl Literal {
     /// This constructor is similar to those like `Literal::i8_unsuffixed` where
     /// the float's value is emitted directly into the token but no suffix is
     /// used, so it may be inferred to be a `f64` later in the compiler.
-    /// Literals created from negative numbers may not survive roundtrips through
-    /// `TokenStream` or strings and may be broken into two tokens (`-` and
-    /// positive literal).
+    /// Literals created from negative numbers may not survive round-trips
+    /// through `TokenStream` or strings and may be broken into two tokens (`-`
+    /// and positive literal).
     ///
     /// # Panics
     ///
@@ -944,7 +1244,7 @@ impl Literal {
     /// specified is the preceding part of the token and `f32` is the suffix of
     /// the token. This token will always be inferred to be an `f32` in the
     /// compiler. Literals created from negative numbers may not survive
-    /// roundtrips through `TokenStream` or strings and may be broken into two
+    /// round-trips through `TokenStream` or strings and may be broken into two
     /// tokens (`-` and positive literal).
     ///
     /// # Panics
@@ -966,9 +1266,19 @@ impl Literal {
         Literal::_new(imp::Literal::character(ch))
     }
 
+    /// Byte character literal.
+    pub fn byte_character(byte: u8) -> Literal {
+        Literal::_new(imp::Literal::byte_character(byte))
+    }
+
     /// Byte string literal.
-    pub fn byte_string(s: &[u8]) -> Literal {
-        Literal::_new(imp::Literal::byte_string(s))
+    pub fn byte_string(bytes: &[u8]) -> Literal {
+        Literal::_new(imp::Literal::byte_string(bytes))
+    }
+
+    /// C string literal.
+    pub fn c_string(string: &CStr) -> Literal {
+        Literal::_new(imp::Literal::c_string(string))
     }
 
     /// Returns the span encompassing this literal.
@@ -984,8 +1294,127 @@ impl Literal {
     /// Returns a `Span` that is a subset of `self.span()` containing only
     /// the source bytes in range `range`. Returns `None` if the would-be
     /// trimmed span is outside the bounds of `self`.
+    ///
+    /// Warning: the underlying [`proc_macro::Literal::subspan`] method is
+    /// nightly-only. When called from within a procedural macro not using a
+    /// nightly compiler, this method will always return `None`.
     pub fn subspan<R: RangeBounds<usize>>(&self, range: R) -> Option<Span> {
         self.inner.subspan(range).map(Span::_new)
+    }
+
+    /// Returns the unescaped string value if this is a string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn str_value(&self) -> Result<String, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with('"') && repr[1..].ends_with('"') {
+            let quoted = &repr[1..repr.len() - 1];
+            let mut value = String::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_str(quoted, |_range, res| match res {
+                Ok(ch) => value.push(ch),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => Ok(value),
+            };
+        }
+
+        if repr.starts_with('r') {
+            if let Some(raw) = get_raw(&repr[1..]) {
+                return Ok(raw.to_owned());
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
+    /// Returns the unescaped string value (including nul terminator) if this is
+    /// a c-string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn cstr_value(&self) -> Result<Vec<u8>, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with("c\"") && repr[2..].ends_with('"') {
+            let quoted = &repr[2..repr.len() - 1];
+            let mut value = Vec::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_c_str(quoted, |_range, res| match res {
+                Ok(MixedUnit::Char(ch)) => {
+                    value.extend_from_slice(ch.get().encode_utf8(&mut [0; 4]).as_bytes());
+                }
+                Ok(MixedUnit::HighByte(byte)) => value.push(byte.get()),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => {
+                    value.push(b'\0');
+                    Ok(value)
+                }
+            };
+        }
+
+        if repr.starts_with("cr") {
+            if let Some(raw) = get_raw(&repr[2..]) {
+                let mut value = Vec::with_capacity(raw.len() + 1);
+                value.extend_from_slice(raw.as_bytes());
+                value.push(b'\0');
+                return Ok(value);
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
+    /// Returns the unescaped string value if this is a byte string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn byte_str_value(&self) -> Result<Vec<u8>, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with("b\"") && repr[2..].ends_with('"') {
+            let quoted = &repr[2..repr.len() - 1];
+            let mut value = Vec::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_byte_str(quoted, |_range, res| match res {
+                Ok(byte) => value.push(byte),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => Ok(value),
+            };
+        }
+
+        if repr.starts_with("br") {
+            if let Some(raw) = get_raw(&repr[2..]) {
+                return Ok(raw.as_bytes().to_owned());
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
+    // Intended for the `quote!` macro to use when constructing a proc-macro2
+    // token out of a macro_rules $:literal token, which is already known to be
+    // a valid literal. This avoids reparsing/validating the literal's string
+    // representation. This is not public API other than for quote.
+    #[doc(hidden)]
+    pub unsafe fn from_str_unchecked(repr: &str) -> Self {
+        Literal::_new(unsafe { imp::Literal::from_str_unchecked(repr) })
     }
 }
 
@@ -993,9 +1422,13 @@ impl FromStr for Literal {
     type Err = LexError;
 
     fn from_str(repr: &str) -> Result<Self, LexError> {
-        repr.parse()
-            .map(Literal::_new)
-            .map_err(|inner| LexError { inner })
+        match imp::Literal::from_str_checked(repr) {
+            Ok(lit) => Ok(Literal::_new(lit)),
+            Err(lex) => Err(LexError {
+                inner: lex,
+                _marker: MARKER,
+            }),
+        }
     }
 }
 
@@ -1011,11 +1444,38 @@ impl Display for Literal {
     }
 }
 
+/// Error when retrieving a string literal's unescaped value.
+#[cfg(procmacro2_semver_exempt)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConversionErrorKind {
+    /// The literal is of the right string kind, but its contents are malformed
+    /// in a way that cannot be unescaped to a value.
+    FailedToUnescape(EscapeError),
+    /// The literal is not of the string kind whose value was requested, for
+    /// example byte string vs UTF-8 string.
+    InvalidLiteralKind,
+}
+
+// ###"..."### -> ...
+#[cfg(procmacro2_semver_exempt)]
+fn get_raw(repr: &str) -> Option<&str> {
+    let pounds = repr.len() - repr.trim_start_matches('#').len();
+    if repr.len() >= pounds + 1 + 1 + pounds
+        && repr[pounds..].starts_with('"')
+        && repr.trim_end_matches('#').len() + pounds == repr.len()
+        && repr[..repr.len() - pounds].ends_with('"')
+    {
+        Some(&repr[pounds + 1..repr.len() - pounds - 1])
+    } else {
+        None
+    }
+}
+
 /// Public implementation details for the `TokenStream` type, such as iterators.
-#[doc(hidden)]
 pub mod token_stream {
+    use crate::marker::{ProcMacroAutoTraits, MARKER};
     use crate::{imp, TokenTree};
-    use std::fmt::{self, Debug};
+    use core::fmt::{self, Debug};
 
     pub use crate::TokenStream;
 
@@ -1026,6 +1486,7 @@ pub mod token_stream {
     #[derive(Clone)]
     pub struct IntoIter {
         inner: imp::TokenTreeIter,
+        _marker: ProcMacroAutoTraits,
     }
 
     impl Iterator for IntoIter {
@@ -1034,11 +1495,16 @@ pub mod token_stream {
         fn next(&mut self) -> Option<TokenTree> {
             self.inner.next()
         }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
     }
 
     impl Debug for IntoIter {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            Debug::fmt(&self.inner, f)
+            f.write_str("TokenStream ")?;
+            f.debug_list().entries(self.clone()).finish()
         }
     }
 
@@ -1049,6 +1515,7 @@ pub mod token_stream {
         fn into_iter(self) -> IntoIter {
             IntoIter {
                 inner: self.inner.into_iter(),
+                _marker: MARKER,
             }
         }
     }
