@@ -126,6 +126,9 @@
     clippy::unnecessary_wraps,
     clippy::unused_self,
     clippy::used_underscore_binding,
+    // Conversion from fallback::* to imp::* is needed when wrap_proc_macro is set,
+    // but appears useless when it's not (because imp = fallback in that case).
+    clippy::useless_conversion,
     clippy::vec_init_then_push
 )]
 #![allow(unknown_lints, mismatched_lifetime_syntaxes)]
