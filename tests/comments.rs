@@ -1,3 +1,5 @@
+#![allow(clippy::assertions_on_result_states, clippy::uninlined_format_args)]
+
 use proc_macro0::{Delimiter, Literal, Spacing, TokenStream, TokenTree};
 
 // #[doc = "..."] -> "..."
