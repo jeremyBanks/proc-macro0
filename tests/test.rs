@@ -837,6 +837,9 @@ fn test_display_tokenstream() {
     assert_eq!(format!("{tts:-^5}"), "[a + 1]");
 }
 
+// With span_locations, this test checks exact byte offsets which are only predictable
+// without the sync feature (which uses a global SOURCE_MAP shared across tests).
+#[cfg_attr(all(span_locations, feature = "sync"), ignore)]
 #[test]
 fn test_debug_tokenstream() {
     let tts = TokenStream::from_str("[a + 1]").unwrap();
@@ -1065,7 +1068,10 @@ fn create_span() -> proc_macro0::Span {
     }
 }
 
-#[cfg(span_locations)]
+// This test relies on thread-local SOURCE_MAP semantics where byte offsets
+// are predictable within a single thread. With the `sync` feature, the SOURCE_MAP
+// is global and shared across all tests, so byte offsets are not predictable.
+#[cfg(all(span_locations, not(feature = "sync")))]
 #[test]
 fn test_invalidate_current_thread_spans() {
     let actual = format!("{:#?}", create_span());
@@ -1081,7 +1087,8 @@ fn test_invalidate_current_thread_spans() {
     assert_eq!(actual, "bytes(1..2)");
 }
 
-#[cfg(span_locations)]
+// This test also relies on thread-local semantics.
+#[cfg(all(span_locations, not(feature = "sync")))]
 #[test]
 #[should_panic(expected = "Invalid span with no related FileInfo!")]
 fn test_use_span_after_invalidation() {

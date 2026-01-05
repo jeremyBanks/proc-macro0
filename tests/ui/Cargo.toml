@@ -1,5 +1,5 @@
 [package]
-name = "proc-macro0-ui-test"
+name = "jeb-proc-macro0-ui-test"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2021"
@@ -10,6 +10,6 @@ name = "compiletest"
 path = "compiletest.rs"
 
 [dev-dependencies]
-proc-macro0 = { path = "../.." }
+jeb-proc-macro0 = { path = "../.." }
 rustversion = "1.0"
 trybuild = { version = "1.0.108", features = ["diff"] }
