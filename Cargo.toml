@@ -1,7 +1,7 @@
 [package]
 name = "jeb-proc-macro0"
 version = "1.0.104"
-authors = ["David Tolnay <dtolnay@gmail.com>", "Alex Crichton <alex@alexcrichton.com>"]
+authors = ["David Tolnay <dtolnay@gmail.com>", "Alex Crichton <alex@alexcrichton.com>", "Jeremy Banks <_@jeremy.ca>"]
 autobenches = false
 categories = ["development-tools::procedural-macro-helpers"]
 description = "A fork of proc-macro2 with an optional `sync` feature for thread-safe usage outside of procedural macros."
